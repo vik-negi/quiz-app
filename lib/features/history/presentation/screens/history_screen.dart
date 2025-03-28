@@ -183,7 +183,8 @@ class _HistoryItem extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      'Date: ${_formatTimestamp(entry['timestamp'])}',
+                      DateFormat('d MMMM yy, ha').format(
+                          DateTime.parse(entry['timestamp'].toString())),
                       style: Theme.of(context)
                           .textTheme
                           .bodySmall

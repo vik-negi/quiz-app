@@ -1,10 +1,17 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:quiz_app/features/quiz/presentation/bloc/quiz_bloc.dart';
 import 'package:quiz_app/features/quiz/presentation/bloc/quiz_event.dart';
 import 'dart:math' as math;
+import 'package:path_provider/path_provider.dart';
+import 'dart:ui' as ui;
 
 import 'package:quiz_app/features/quiz/presentation/widgets/custom_scaffold.dart';
+import 'package:share_plus/share_plus.dart';
 
 class ResultScreen extends StatefulWidget {
   final int score;
@@ -24,6 +31,7 @@ class _ResultScreenState extends State<ResultScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _scoreAnimation;
+  final GlobalKey _globalKey = GlobalKey();
 
   @override
   void initState() {
@@ -61,9 +69,40 @@ class _ResultScreenState extends State<ResultScreen>
     }
   }
 
+  Future<void> _shareResult() async {
+    try {
+      RenderRepaintBoundary boundary = _globalKey.currentContext!
+          .findRenderObject() as RenderRepaintBoundary;
+
+      ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      ByteData? byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+      Uint8List pngBytes = byteData!.buffer.asUint8List();
+
+      final tempDir = await getTemporaryDirectory();
+      final file =
+          await File('${tempDir.path}/quiz_result.png').writeAsBytes(pngBytes);
+
+      final shareText = 'I scored ${widget.score}/${widget.totalQuestions} '
+          '(${((widget.score / widget.totalQuestions) * 100).toInt()}%) '
+          'on this quiz! ${_getFeedbackMessage()}';
+
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: shareText,
+      );
+    } catch (e) {
+      debugPrint('Error sharing result: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Something went wrong while sharing.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return CustomScaffold(
+      useSafeArea: true,
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
@@ -97,111 +136,118 @@ class _ResultScreenState extends State<ResultScreen>
               ],
             ),
             const Spacer(),
-            TweenAnimationBuilder<double>(
-              tween: Tween<double>(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 800),
-              curve: Curves.elasticOut,
-              builder: (context, value, child) {
-                return Transform.scale(
-                  scale: value,
-                  child: child,
-                );
-              },
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 16),
-                    Text(
-                      'Your Score',
-                      style:
-                          Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                    ),
-                    const SizedBox(height: 32),
-                    AnimatedBuilder(
-                      animation: _scoreAnimation,
-                      builder: (context, child) {
-                        return CustomPaint(
-                          size: const Size(200, 200),
-                          painter: ScoreCirclePainter(
-                            percentage: _scoreAnimation.value,
-                            backgroundColor:
-                                Theme.of(context).colorScheme.primaryContainer,
-                            progressColor:
-                                Theme.of(context).colorScheme.primary,
-                          ),
-                          child: Container(
-                            alignment: Alignment.center,
-                            width: 200,
-                            height: 200,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  '${(widget.score / widget.totalQuestions * 100).toInt()}%',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .headlineLarge
-                                      ?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .primary,
-                                      ),
-                                ),
-                                Text(
-                                  '${widget.score}/${widget.totalQuestions}',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleMedium
-                                      ?.copyWith(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onBackground
-                                            .withOpacity(0.7),
-                                      ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 32),
-                    TweenAnimationBuilder<double>(
-                      tween: Tween<double>(begin: 0, end: 1),
-                      duration: const Duration(milliseconds: 800),
-                      curve: Curves.easeOutQuad,
-                      builder: (context, value, child) {
-                        return Opacity(
-                          opacity: value,
-                          child: child,
-                        );
-                      },
-                      child: Text(
-                        _getFeedbackMessage(),
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
+            RepaintBoundary(
+              key: _globalKey,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween<double>(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 800),
+                curve: Curves.elasticOut,
+                builder: (context, value, child) {
+                  return Transform.scale(
+                    scale: value,
+                    child: child,
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 16),
+                      Text(
+                        'Your Score',
+                        style:
+                            Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                      ),
+                      const SizedBox(height: 32),
+                      AnimatedBuilder(
+                        animation: _scoreAnimation,
+                        builder: (context, child) {
+                          return CustomPaint(
+                            size: const Size(200, 200),
+                            painter: ScoreCirclePainter(
+                              percentage: _scoreAnimation.value,
+                              backgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer,
+                              progressColor:
+                                  Theme.of(context).colorScheme.primary,
+                            ),
+                            child: Container(
+                              alignment: Alignment.center,
+                              width: 200,
+                              height: 200,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '${(widget.score / widget.totalQuestions * 100).toInt()}%',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineLarge
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                        ),
+                                  ),
+                                  Text(
+                                    '${widget.score}/${widget.totalQuestions}',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onBackground
+                                              .withOpacity(0.7),
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 32),
+                      TweenAnimationBuilder<double>(
+                        tween: Tween<double>(begin: 0, end: 1),
+                        duration: const Duration(milliseconds: 800),
+                        curve: Curves.easeOutQuad,
+                        builder: (context, value, child) {
+                          return Opacity(
+                            opacity: value,
+                            child: child,
+                          );
+                        },
+                        child: Text(
+                          _getFeedbackMessage(),
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -249,7 +295,7 @@ class _ResultScreenState extends State<ResultScreen>
                   const SizedBox(width: 16),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: () {},
+                      onPressed: _shareResult,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Theme.of(context).colorScheme.primary,
                         foregroundColor:
